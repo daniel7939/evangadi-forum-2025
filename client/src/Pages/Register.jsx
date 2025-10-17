@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import api from "../api";
 
 function Register() {
@@ -131,9 +131,9 @@ function Register() {
 
         <p style={{ textAlign: "center", marginTop: "15px" }}>
           Already have an account?{" "}
-          <a href="/login" style={{ color: "#2563eb" }}>
+          <Link to="/login" style={{ color: "#2563eb" }}>
             Login
-          </a>
+          </Link>
         </p>
       </form>
 

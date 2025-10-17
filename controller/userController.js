@@ -9,7 +9,6 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev_secret_change_me';
 async function register(req, res) {
   const { username, firstname, lastname, email, password } = req.body;
 
-  // 1️⃣ Validate input
   if (!username || !firstname || !lastname || !email || !password) {
     return res.status(StatusCodes.BAD_REQUEST).json({ msg: '⚠️ All fields are required.' });
   }
@@ -19,26 +18,27 @@ async function register(req, res) {
   }
 
   try {
-    // 2️⃣ Check if email exists
-    const [existing] = await pool.promise().query('SELECT * FROM users WHERE email = ?', [email]);
-    if (existing.length > 0) {
+    const existing = await pool.query('SELECT * FROM users WHERE email=$1', [email]);
+    if (existing.rows.length > 0) {
       return res.status(StatusCodes.BAD_REQUEST).json({ msg: '❌ Email already exists.' });
     }
 
-    // 3️⃣ Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // 4️⃣ Insert user
     const sql = `
       INSERT INTO users (username, firstname, lastname, email, password)
-      VALUES (?, ?, ?, ?, ?)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, username, email
     `;
-    await pool.promise().execute(sql, [username, firstname, lastname, email, hashedPassword]);
+    const result = await pool.query(sql, [username, firstname, lastname, email, hashedPassword]);
 
-    res.status(StatusCodes.CREATED).json({ msg: '✅ User registered successfully.' });
+    res.status(StatusCodes.CREATED).json({ 
+      msg: '✅ User registered successfully.',
+      user: result.rows[0]
+    });
   } catch (err) {
     console.error('Register error:', err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ msg: '❌ Server error', error: err.message });
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ msg: error.response?.data?.msg || "Registration failed. Try again.", error: err.message });
   }
 }
 
@@ -51,12 +51,12 @@ async function login(req, res) {
   }
 
   try {
-    const [rows] = await pool.promise().query('SELECT * FROM users WHERE email = ?', [email]);
-    if (rows.length === 0) {
+    const result = await pool.query('SELECT * FROM users WHERE email=$1', [email]);
+    if (result.rows.length === 0) {
       return res.status(StatusCodes.UNAUTHORIZED).json({ msg: '❌ Email not found. Please register first.' });
     }
 
-    const user = rows[0];
+    const user = result.rows[0];
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res.status(StatusCodes.UNAUTHORIZED).json({ msg: '❌ Incorrect password.' });
@@ -74,24 +74,27 @@ async function login(req, res) {
     });
   } catch (err) {
     console.error('Login error:', err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ msg: '❌ Server error' });
+    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ msg: '❌ Server error', error: err.message });
   }
 }
 
 // ===== CHECK USER =====
 async function check(req, res) {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(StatusCodes.UNAUTHORIZED).json({ msg: '❌ Token missing' });
+
   try {
-    const [rows] = await pool.promise().query(
-      'SELECT id, username, firstname, lastname, email FROM users WHERE email = ?',
-      [req.user.email]
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const result = await pool.query(
+      'SELECT id, username, firstname, lastname, email FROM users WHERE email=$1',
+      [decoded.email]
     );
+    if (result.rows.length === 0) return res.status(StatusCodes.NOT_FOUND).json({ msg: 'User not found' });
 
-    if (rows.length === 0) return res.status(StatusCodes.NOT_FOUND).json({ msg: 'User not found' });
-
-    res.status(StatusCodes.OK).json({ user: rows[0] });
+    res.status(StatusCodes.OK).json({ user: result.rows[0] });
   } catch (err) {
     console.error('Check user error:', err);
-    res.status(StatusCodes.INTERNAL_SERVER_ERROR).json({ msg: '❌ Server error', error: err.message });
+    res.status(StatusCodes.UNAUTHORIZED).json({ msg: '❌ Invalid token' });
   }
 }
 

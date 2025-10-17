@@ -2,7 +2,7 @@ import { useEffect, useState, createContext } from "react";
 import { Routes, Route, useNavigate } from "react-router-dom";
 import Home from "./pages/Home";
 import Register from "./Pages/Register";
-import Login from "./pages/Login";
+import Login from "./Pages/Login";
 import api from "./api"; // your axios instance
 
 export const AppState = createContext();
